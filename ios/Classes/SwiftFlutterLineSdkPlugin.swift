@@ -4,13 +4,83 @@ import UIKit
 import LineSDK
 
 public class SwiftFlutterLineSdkPlugin: NSObject, FlutterPlugin {
+  private static let channelName = "com.wilson.mtech/channel";
+  private var myChannel: FlutterMethodChannel?
+    
+    
   public static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(name: "com.linecorp/flutter_line_sdk", binaryMessenger: registrar.messenger())
     let instance = SwiftFlutterLineSdkPlugin()
     registrar.addMethodCallDelegate(instance, channel: channel)
     registrar.addApplicationDelegate(instance)
-  }
+    
+     let lineChannel = FlutterMethodChannel(name: channelName,
+                                            binaryMessenger: registrar.messenger())
+      lineChannel.setMethodCallHandler({
+        (call: FlutterMethodCall, result: @escaping FlutterResult) -> Void in
+        // Note: this method is invoked on the UI thread.
+        if call.method == "toLinePay" {
+            instance.receiveNativeData(result: result)
+        } else {
+          result(FlutterMethodNotImplemented)
+        }
+      })
+      instance.myChannel = lineChannel
 
+  }
+  private  func receiveNativeData(result: FlutterResult) {
+       // Perform native operations to get data
+       let data = "This is data from iOS"
+       result(data)
+ }
+    
+
+  func parseCustomURLScheme(url: URL) {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let host = components.host,
+              let queryItems = components.queryItems else {
+            return
+        }
+        
+        // host可能包含端口信息，这里我们不需要端口信息
+        let path = host + (components.path.isEmpty ? "" : components.path) // "pay/LinePayPage"
+        
+        // 提取查询参数
+        let transactionId = queryItems.first(where: { $0.name == "transactionId" })?.value
+        let orderId = queryItems.first(where: { $0.name == "orderId" })?.value
+        
+        // 根据path和查询参数执行相应的逻辑
+        // 例如，跳转到支付页面
+        if path == "pay/LinePayPage", let transactionId = transactionId, let orderId = orderId {
+            // 执行支付流程
+            handlePayment(transactionId: transactionId, orderId: orderId)
+        }
+    }
+    
+     func handlePayment(transactionId: String, orderId: String) {
+        // 处理支付逻辑
+        print("处理支付，交易ID: \(transactionId), 订单ID: \(orderId)")
+        // 创建一个字典，与 Kotlin 中使用 mapOf 类似
+        let map: [String: String] = [
+            "transactionId": transactionId,
+            "orderId": orderId
+        ]
+
+        // 调用 Flutter 端的 'getPayMessage' 方法
+        myChannel?.invokeMethod("getPayMessage", arguments: map) { (result: Any?) in
+            // 这里处理回调结果
+            if let error = result as? FlutterError {
+                print("Flutter error: \(error.message ?? "")")
+            } else if FlutterMethodNotImplemented.isEqual(result) {
+                print("Flutter method not implemented.")
+            } else {
+                // 成功获取到结果
+                print("Received result: \(String(describing: result))")
+            }
+        }
+
+    }
+    
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
 
     guard let method = LineChannelMethod(rawValue: call.method) else {
@@ -22,12 +92,20 @@ public class SwiftFlutterLineSdkPlugin: NSObject, FlutterPlugin {
     method.call(arguments: arguments, result: result)
   }
 
-  public func application(
+  public  func application(
     _ application: UIApplication,
     open url: URL,
     options: [UIApplication.OpenURLOptionsKey : Any] = [:]) -> Bool
   {
-    return LoginManager.shared.application(application, open: url, options: options)
+      
+              print("wilson--------2")
+              print(url.scheme)
+              print("wilson--------")
+      if(url.scheme == "mtech"){
+          parseCustomURLScheme(url: url)
+
+      }
+      return LoginManager.shared.application(application, open: url, options: options)
   }
 
   public func application(
